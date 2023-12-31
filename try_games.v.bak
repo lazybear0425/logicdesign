@@ -1,0 +1,306 @@
+module try_games(
+	input CLK,
+	input [3:0] pos,
+	input ensure,
+	output reg [7:0]red,blue,green,
+	output reg [3:0]COMM_88,
+	output reg [1:0]COMM_seg,
+	output reg [6:0] seg,
+	output reg [1:0]flag,
+	output reg [2:0]life_p1,life_p2
+);
+
+
+	divfreq_one F1(CLK,CLK_one);
+	divfreq_change F2(CLK,CLK_show);
+
+	reg [7:0] show_p1[7:0];
+	reg [7:0] show_p2[7:0];
+	reg [7:0] show_now [7:0];
+	reg [2:0] where [1:0]; //[1](x): 0~7 ,[0](y): 0~7
+	reg [2:0] where_p2 [1:0];
+	bit who; //player 1 or 2
+	bit [2:0] show_88;
+	bit win_p1,win_p2;
+	bit not_win;
+	bit timeout;
+	bit skip;
+	bit tmp_win_p1,tmp_win_p2;
+	bit who_change;
+
+	initial
+		begin
+			show_p1='{8'b00000000,8'b00000000,8'b00000000,8'b00000000,8'b00000000,8'b00000000,8'b00000000,8'b00000000};
+			show_p2='{8'b00000000,8'b00000000,8'b00000000,8'b00000000,8'b00000000,8'b00000000,8'b00000000,8'b00000000};
+			show_now='{8'b00000000,8'b00000000,8'b00000000,8'b00000000,8'b00000000,8'b00000000,8'b00000000,8'b00000000};
+			where='{3'b000,3'b000};
+			where_p2='{3'b000,3'b000};
+			who=0;
+			win_p1=0;
+			win_p2=0;
+			not_win=1;
+			timeout=0;
+			flag=2'b00;
+			skip=0;
+			life_p1=3'b111;
+			life_p2=3'b111;
+			tmp_win_p1=0;tmp_win_p2=0;
+		end
+
+	//if timeout, life-1
+	always @(posedge skip)
+		begin
+				if(~who) //player 1
+				begin
+					case(life_p1)
+						3'b111: life_p1=3'b110;
+						3'b110: life_p1=3'b100;
+						3'b100: life_p1=3'b000;
+						3'b000: tmp_win_p2=1;
+					endcase
+				end
+				else
+					begin
+					case(life_p2)
+						3'b111: life_p2=3'b110;
+						3'b110: life_p2=3'b100;
+						3'b100: life_p2=3'b000;
+						3'b000: tmp_win_p1=1;
+					endcase
+					end
+					
+			end
+	//place chess
+	logic [2:0]last_x,last_y;
+	always @(posedge pos)
+	begin
+		show_now[last_x][last_y]=1; //not show(blue)
+		if(pos[0]==1)
+			begin
+				if(where[0]==3'b111)
+					where[0]=3'b000;
+				else
+					where[0]=where[0]+1'b1;
+			end
+		else if(pos[1]==1)
+			begin
+				if(where[0]==3'b000)
+					where[0]=3'b111;
+				else
+					where[0]=where[0]-1'b1;
+			end
+		else if(pos[2]==1)
+			begin
+				if(where[1]==3'b000)
+					where[1]=3'b111;
+				else
+					where[1]=where[1]-1'b1;
+			end
+		else if(pos[3]==1)
+			begin
+				if(where[1]==3'b111)
+					where[1]=3'b000;
+				else
+					where[1]=where[1]+1'b1;
+			end
+		last_x=where[1];
+		last_y=where[0];
+		show_now[where[1]][where[0]]=0; //show now position
+	end
+	//play chess
+	always @(posedge ensure)
+	begin
+		if(who==0)
+			if(~show_p1[last_x][last_y])
+				show_p1[last_x][last_y]=0;
+		else
+			if(~show_p2[last_x][last_y])
+				show_p2[last_x][last_y]=0;
+		show_now[last_x][last_y]=1; //reset
+		who_change=~who_change; //change
+	end
+	//exchange other player
+	always @(who_change,skip)
+	begin
+		#1 who=~who;
+	end
+
+	// win condition
+	logic x,y;
+	always @(who)
+		begin
+			if(who)//player1
+				begin
+					x=where[1];
+					y=where[0];
+					if(show_p1[x][y]&&show_p1[x+1][y]&&show_p1[x+2][y]&&show_p1[x+3][y]&&show_p1[x+4][y])
+						begin win_p1=1; not_win=0; end
+					else if(show_p1[x][y]&&show_p1[x][y+1]&&show_p1[x][y+2]&&show_p1[x][y+3]&&show_p1[x][y+4])
+						begin win_p1=1; not_win=0; end
+					else if(show_p1[x][y]&&show_p1[x+1][y+1]&&show_p1[x+2][y+2]&&show_p1[x+3][y+3]&&show_p1[x+4][y+4])
+						begin win_p1=1; not_win=0; end
+					else if(show_p1[x+4][y]&&show_p1[x+3][y+1]&&show_p1[x+2][y+2]&&show_p1[x+1][y+3]&&show_p1[x][y+4])
+						begin win_p1=1; not_win=0; end
+					else if(tmp_win_p1)
+						begin win_p1=1; not_win=0; end
+				end
+			else
+				begin
+					x=where[1];
+					y=where[0];
+					if(show_p2[x][y]&&show_p2[x+1][y]&&show_p2[x+2][y]&&show_p2[x+3][y]&&show_p2[x+4][y])
+						begin win_p2=1; not_win=0; end
+					else if(show_p2[x][y]&&show_p2[x][y+1]&&show_p2[x][y+2]&&show_p2[x][y+3]&&show_p2[x][y+4])
+						begin win_p2=1; not_win=0; end
+					else if(show_p2[x][y]&&show_p2[x+1][y+1]&&show_p2[x+2][y+2]&&show_p2[x+3][y+3]&&show_p2[x+4][y+4])
+						begin win_p2=1; not_win=0; end
+					else if(show_p2[x+4][y]&&show_p2[x+3][y+1]&&show_p2[x+2][y+2]&&show_p2[x+1][y+3]&&show_p2[x][y+4])
+						begin win_p2=1; not_win=0; end
+					else if(tmp_win_p2)
+						begin win_p2=1; not_win=0; end
+				end
+		end
+	//	show player win
+	parameter logic[7:0] win [7:0]='{
+	8'b10000001,
+	8'b01111110,
+	8'b01011010,
+	8'b01111110,
+	8'b01011010,
+	8'b01100110,
+	8'b01111110,
+	8'b10000001
+	};
+
+	//show 
+	always @(CLK_show)
+		begin
+			if(show_88==3'b111)
+				show_88=3'b000;
+			else
+				show_88=show_88+1'b1;
+			COMM_88={1'b1,show_88};
+			if(not_win)
+				begin
+					red=show_p1[show_88];
+					blue=where[show_88];
+					green=show_p2[show_88];
+				end
+			else
+				begin
+					if(win_p1) //player1 win
+						begin
+							red=win[show_88];
+							blue=8'b11111111;
+							green=8'b11111111;
+						end
+					else if(win_p2) //player2 win
+						begin
+							red=8'b11111111;
+							blue=8'b11111111;
+							green=win[show_88];
+						end
+				end
+		end
+//timer========================================
+	bit[3:0] ten,one;
+	initial
+		begin
+			ten=4'b1001;
+			one=4'b1000;
+			COMM_seg=2'b01;
+		end
+	
+	//change ten digit
+	always@(posedge one)
+		begin
+		  if(one==4'b1001)
+			  begin
+				if(ten==4'b0000)
+					begin
+						flag=2'b01;
+						#2 flag=2'b10;
+						#4 flag=2'b11;
+						#4 flag=2'b00;
+						skip=1;
+						skip=0;
+						ten=4'b1001;
+					end
+				else
+					ten=ten-1'b1;
+				end
+			
+		end
+	//change one digit
+	always@(posedge CLK_one)
+		begin
+			if(one==4'b0000)
+				one=4'b1001;
+			else
+				one=one-1'b1;
+		end
+	//change 7-seg show
+	always @(posedge CLK_show)
+		//begin
+			if(COMM_seg==2'b01)
+				begin
+					COMM_seg=2'b10;
+					case(ten)
+						4'b0000:seg=7'b0000001;
+						4'b0001:seg=7'b1001111;
+						4'b0010:seg=7'b0010010;
+						4'b0011:seg=7'b0000110;
+						4'b0100:seg=7'b1001100;
+						4'b0101:seg=7'b0100100;
+						4'b0110:seg=7'b0100000;
+						4'b0111:seg=7'b0001111;
+						4'b1000:seg=7'b00000000;
+						4'b1001:seg=7'b0001100;
+					endcase
+				end
+			else
+				begin
+					COMM_seg=2'b01;
+					case(one)
+						4'b0000:seg=7'b0000001;
+						4'b0001:seg=7'b1001111;
+						4'b0010:seg=7'b0010010;
+						4'b0011:seg=7'b0000110;
+						4'b0100:seg=7'b1001100;
+						4'b0101:seg=7'b0100100;
+						4'b0110:seg=7'b0100000;
+						4'b0111:seg=7'b0001111;
+						4'b1000:seg=7'b00000000;
+						4'b1001:seg=7'b0001100;
+					endcase
+				end
+endmodule
+
+//===========================================================================
+module divfreq_change(input CLK,output reg CLK_div);
+	reg [24:0] Count=25'b0;
+	always @(posedge CLK)
+		begin
+			if(Count>25000)
+				begin
+					Count <=25'b0;
+					CLK_div<=~CLK_div;
+				end
+			else
+				Count<=Count+1'b1;
+		end
+endmodule
+
+module divfreq_one(input CLK,output reg CLK_div);
+	reg [24:0] Count=25'b0;
+	always @(posedge CLK)
+		begin
+			if(Count>25000000) //25*10^4
+				begin
+					Count <=25'b0;
+					CLK_div<=~CLK_div;
+				end
+			else
+				Count<=Count+1'b1;
+		end
+endmodule
